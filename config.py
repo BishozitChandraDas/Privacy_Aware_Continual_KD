@@ -17,7 +17,7 @@ import os
 def _detect_project_root() -> str:
     """Return the project root folder on Colab or local automatically."""
     colab_path = "/content/drive/MyDrive/APAI_Project"
-    if os.path.isdir(colab_path):
+    if os.path.isdir(colab_path): 
         return colab_path
     # local: the folder that contains this config.py
     return os.path.dirname(os.path.abspath(__file__))

@@ -11,7 +11,7 @@ Everything about data:
 Public API (used from the notebook):
     download_datasets()           -> (path_A, path_B)
     build_task(task="A")          -> dict of loaders + metadata
-    show_samples(task_data)       -> quick visual sanity check
+    show_samples(task_data)       -> quick visual sanity check 
 """
 
 import os
