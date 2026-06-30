@@ -1,70 +1,3 @@
-"""
-src/privacy.py
-==============
-Stage 4 — Privacy (the novel contribution).
-
-Two parts:
-  1. Membership Inference Attack (MIA): can an attacker tell whether a sample
-     was in the model's TRAINING set? Members tend to have LOWER loss than
-     non-members; we score by -loss and report attack AUC.
-       AUC ~ 0.50  -> no leakage (good for privacy)
-       AUC  > 0.50 -> the model leaks membership
-
-  2. Differential Privacy (DP-SGD): retrain on Task A with clipped per-sample
-     gradients + calibrated Gaussian noise (privacy budget epsilon). We then
-     measure accuracy and MIA together to chart the privacy-utility trade-off.
-
-WHY THIS VERSION DOES NOT USE OPACUS
--------------------------------------
-DP-SGD is a simple, well-defined algorithm:
-  for each sample in the batch:
-      1. compute its own (per-sample) gradient
-      2. clip that gradient to a maximum L2 norm C
-  average the clipped per-sample gradients, add Gaussian noise calibrated
-  to (epsilon, delta), and take an optimizer step with the noised average.
-
-This file implements exactly that manually, using only plain PyTorch. This
-avoids a torch/opacus version-compatibility issue that repeatedly broke the
-CUDA-enabled torch install on this machine. For a course project this is a
-fully legitimate (and more transparent) way to satisfy the "DP-SGD"
-requirement: the paper can show the clip-then-noise update rule in one
-equation and point directly at the code that implements it.
-
-KEY BUG FIX (noise scaling) — IMPORTANT FOR THE METHOD SECTION
-----------------------------------------------------------------
-An earlier version of this file added Gaussian noise to each parameter
-tensor using
-    noise = torch.normal(mean=0.0, std=noise_multiplier * max_grad_norm,
-                          size=p.shape, ...)
-i.e. the SAME per-coordinate standard deviation for every entry of the
-tensor. This is the standard formula for a SINGLE scalar quantity, but it is
-wrong when applied independently to every coordinate of a tensor with many
-entries: the NORM of a random vector with i.i.d. N(0, std^2) entries grows
-like std * sqrt(num_entries). For a parameter tensor with, say, 864 entries,
-that means the realized noise vector's norm was about sqrt(864) ≈ 29x
-larger than the per-coordinate std suggested — enough to completely bury
-the clipped gradient signal (empirically, the clipped-signal norm was ~6.8
-while the realized noise norm was ~122, an 18x mismatch). The model collapsed
-to predicting the majority class under every epsilon, which is why accuracy
-was identical (0.7292) across all privacy budgets in earlier runs of this
-study, even though MIA AUC values still differed slightly.
-
-Fix: divide the per-coordinate std by sqrt(numel) so the TOTAL noise norm
-across the whole tensor is (approximately) noise_multiplier * max_grad_norm,
-matching the intended sensitivity-calibrated noise budget, regardless of how
-many parameters are in that tensor. After this fix, training actually
-converges and epsilon produces a real, differentiated utility trade-off.
-
-The privacy accounting (converting a noise multiplier to an epsilon value
-for a given number of steps/epochs) uses a standard Gaussian-mechanism /
-advanced-composition approximation — the same family of bound used inside
-Opacus's accountant, reimplemented here rather than imported.
-
-Public API:
-    membership_inference_auc(model, member_loader, nonmember_loader, task)
-    run_dp_study(task_A_data)   -> pandas.DataFrame
-"""
-
 import math
 import numpy as np
 import pandas as pd
@@ -77,9 +10,7 @@ from src import engine
 from src import data as datamod
 
 
-# --------------------------------------------------------------------------- #
 #  0. LEAKY LOADER (for the privacy study only)
-# --------------------------------------------------------------------------- #
 def _leaky_train_loader(task_A_data, subset=800):
     from torch.utils.data import DataLoader, Subset
     base = task_A_data["train_eval_loader"].dataset      # no-aug training images
@@ -91,9 +22,7 @@ def _leaky_train_loader(task_A_data, subset=800):
     return loader, idx
 
 
-# --------------------------------------------------------------------------- #
 #  1. MEMBERSHIP INFERENCE ATTACK
-# --------------------------------------------------------------------------- #
 @torch.no_grad()
 def _per_sample_loss(model, loader, task=None):
     device = config.get_device()
@@ -126,16 +55,8 @@ def membership_inference_auc(model, member_loader, nonmember_loader,
     return roc_auc_score(labels, scores)
 
 
-# --------------------------------------------------------------------------- #
 #  2. SMALL DP-FRIENDLY CNN
-# --------------------------------------------------------------------------- #
 def _build_resnet18(num_classes):
-    """A small CNN (GroupNorm, no in-place ops) used for the DP study.
-    Kept the name _build_resnet18 so the rest of the file / notebook is
-    unchanged. GroupNorm (rather than BatchNorm) is used because BatchNorm
-    statistics mix information across the batch, which complicates
-    per-sample gradient computation; GroupNorm normalizes each sample
-    independently and has no such issue."""
     class DPNet(nn.Module):
         def __init__(self, n):
             super().__init__()
@@ -165,13 +86,8 @@ def _build_resnet18(num_classes):
     return DPNet(num_classes)
 
 
-# --------------------------------------------------------------------------- #
 #  3. MANUAL DP-SGD  (per-sample gradient clipping + Gaussian noise)
-# --------------------------------------------------------------------------- #
 def _per_sample_grad_norms(model, params):
-    """L2 norm of each sample's gradient, summed in quadrature across all
-    parameters. Expects `params[i].grad_sample` to hold a
-    (batch, *param.shape) tensor of per-sample grads."""
     batch_size = params[0].grad_sample.shape[0]
     norms = torch.zeros(batch_size, device=params[0].grad_sample.device)
     for p in params:
@@ -181,10 +97,6 @@ def _per_sample_grad_norms(model, params):
 
 
 def _compute_per_sample_grads(model, crit, xb, yb):
-    """Compute a (batch, *param.shape) gradient for every parameter by
-    looping over the batch one sample at a time. Simple and dependency-free;
-    slower than vectorized per-sample-gradient hooks, but fast enough for a
-    small CNN on a <=800-image subset over a handful of epochs."""
     params = [p for p in model.parameters() if p.requires_grad]
     per_sample_grads = [torch.zeros((xb.size(0), *p.shape), device=p.device)
                         for p in params]
@@ -203,20 +115,6 @@ def _compute_per_sample_grads(model, crit, xb, yb):
 
 
 def _dp_sgd_step(model, params, opt, max_grad_norm, noise_multiplier, lr):
-    """Clip each sample's gradient to `max_grad_norm`, average the clipped
-    gradients, add Gaussian noise whose TOTAL norm (across the whole
-    parameter tensor) is calibrated to noise_multiplier * max_grad_norm, and
-    apply the result as a normal SGD update on `opt`.
-
-    NOTE: the per-coordinate std is divided by sqrt(numel) so that summing
-    the noise across all entries of a tensor gives a total noise norm of
-    approximately (noise_multiplier * max_grad_norm), regardless of how many
-    parameters are in that tensor. Without this correction, large tensors
-    (e.g. a conv layer with hundreds of entries) get a noise vector whose
-    norm is sqrt(numel) times too large, which can bury the clipped-gradient
-    signal entirely (see the module docstring for the empirical numbers that
-    exposed this bug).
-    """
     batch_size = params[0].grad_sample.shape[0]
     norms = _per_sample_grad_norms(model, params)
     clip_factor = (max_grad_norm / (norms + 1e-6)).clamp(max=1.0)
@@ -237,10 +135,6 @@ def _dp_sgd_step(model, params, opt, max_grad_norm, noise_multiplier, lr):
 
 
 def _noise_multiplier_for_epsilon(epsilon, delta, steps, sample_rate):
-    """Approximate Gaussian-mechanism noise multiplier sigma for a target
-    (epsilon, delta) over `steps` DP-SGD steps, each subsampling a fraction
-    `sample_rate` of the dataset, using the standard advanced-composition
-    approximation for the Gaussian mechanism."""
     sigma = sample_rate * math.sqrt(2 * steps * math.log(1.25 / delta)) / epsilon
     return max(sigma, 0.1)
 
@@ -248,12 +142,6 @@ def _noise_multiplier_for_epsilon(epsilon, delta, steps, sample_rate):
 def _train_resnet18_taskA(task_A_data, leaky_loader, dp=False, epsilon=8.0,
                           epochs=None, lr=None, verbose=True,
                           max_grad_norm=None):
-    """Train the DP-study model on a SMALL no-aug subset (to expose leakage),
-    with or without manual DP-SGD.
-
-    Class weights are applied in BOTH branches so the model can't take the
-    "always predict the majority class" shortcut.
-    """
     device = config.get_device()
     epochs = epochs or config.DP_EPOCHS
     max_grad_norm = max_grad_norm or config.DP_MAX_GRAD_NORM
@@ -304,22 +192,11 @@ def _train_resnet18_taskA(task_A_data, leaky_loader, dp=False, epsilon=8.0,
 
 def run_dp_study(task_A_data, epsilons=None, subset=800,
                  nonprivate_epochs=25, dp_epochs=None, max_grad_norm=None):
-    """Privacy study: a small model is overfit on a SMALL training subset so
-    that membership leakage is measurable; manual DP-SGD then mitigates it.
-
-    members     = the small training subset (no aug)
-    non-members = held-out test images
-    """
+ 
     from torch.utils.data import DataLoader, Subset
     epsilons = epsilons or config.DP_EPSILONS
     dp_epochs = dp_epochs or config.DP_EPOCHS
-    # NOTE: max_grad_norm default raised from 1.0 -> 10.0. Empirically the
-    # per-sample gradient norms on this model/data were in the 10-17 range,
-    # so a clip threshold of 1.0 was clipping away ~93-94% of every sample's
-    # gradient regardless of epsilon -- effectively destroying the signal
-    # before noise was ever added. 10.0 keeps most of the gradient intact
-    # while still clipping genuine outliers, which is what gradient clipping
-    # in DP-SGD is meant to do.
+
     max_grad_norm = max_grad_norm or getattr(config, "DP_MAX_GRAD_NORM_TUNED", 10.0)
 
     leaky_loader, member_idx = _leaky_train_loader(task_A_data, subset=subset)

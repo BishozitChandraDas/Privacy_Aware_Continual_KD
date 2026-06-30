@@ -1,22 +1,3 @@
-"""
-src/engine.py
-=============
-The training / evaluation engine — task-agnostic and reused by every stage
-(teacher training, distillation, continual learning, privacy).
-
-Public API:
-    train_supervised(model, train_loader, val_loader, weights, task, epochs)
-        -> (model, history)            # generic supervised training
-
-    evaluate(model, loader, task)
-        -> dict(y_true, y_pred, y_prob, acc)
-
-    full_report(model, loader, task, class_names)
-        -> dict of metrics (acc, macro precision/recall/f1, auc, confusion)
-
-    save_checkpoint(model, name)  /  load_checkpoint(model, name)
-"""
-
 import os
 import copy
 import numpy as np
@@ -30,9 +11,7 @@ from sklearn.metrics import (classification_report, confusion_matrix,
 import config
 
 
-# --------------------------------------------------------------------------- #
 #  OPTIMIZER
-# --------------------------------------------------------------------------- #
 def make_optimizer(params, lr=None):
     lr = lr or config.LR
     if config.OPTIMIZER.lower() == "sgd":
@@ -40,9 +19,7 @@ def make_optimizer(params, lr=None):
     return torch.optim.Adam(params, lr=lr)
 
 
-# --------------------------------------------------------------------------- #
 #  EVALUATION
-# --------------------------------------------------------------------------- #
 @torch.no_grad()
 def evaluate(model, loader, task=None):
     """Run the model over a loader. task=None for single-head teacher,
@@ -90,9 +67,7 @@ def full_report(model, loader, task, class_names):
     return out
 
 
-# --------------------------------------------------------------------------- #
 #  TRAINING
-# --------------------------------------------------------------------------- #
 def train_supervised(model, train_loader, val_loader, weights,
                      task=None, epochs=None, lr=None, verbose=True):
     """Generic supervised training with validation; keeps best-val weights."""
@@ -153,9 +128,7 @@ def _loss_on(model, loader, crit, task):
     return s / max(n, 1)
 
 
-# --------------------------------------------------------------------------- #
 #  CONTINUAL-LEARNING METRIC: retention
-# --------------------------------------------------------------------------- #
 def retention(acc_after, acc_before):
     """Task-A retention (%) = how much of the original accuracy survived."""
     if acc_before <= 0:
@@ -163,9 +136,7 @@ def retention(acc_after, acc_before):
     return 100.0 * acc_after / acc_before
 
 
-# --------------------------------------------------------------------------- #
 #  CHECKPOINTS
-# --------------------------------------------------------------------------- #
 def save_checkpoint(model, name):
     path = os.path.join(config.CHECKPOINT_DIR, name)
     if not path.endswith(".pth"):

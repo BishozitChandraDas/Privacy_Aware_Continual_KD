@@ -1,17 +1,3 @@
-"""
-src/distillation.py
-===================
-Knowledge Distillation: transfer the teacher's knowledge (Task A) into the
-lightweight multi-head student's Task-A head + shared backbone.
-
-We use logit-based KD (Hinton et al.):
-    L = alpha * CE(student, labels) + (1-alpha) * T^2 * KL(soft_teacher || soft_student)
-
-Public API:
-    kd_logit_loss(student_logits, teacher_logits, T)
-    distill(teacher, student, task_A_data)   -> (student, history)
-"""
-
 import copy
 import numpy as np
 
@@ -23,9 +9,7 @@ import config
 from src import engine
 
 
-# --------------------------------------------------------------------------- #
 #  LOSSES
-# --------------------------------------------------------------------------- #
 def kd_logit_loss(student_logits, teacher_logits, T=None):
     """Temperature-scaled KL divergence between teacher and student outputs."""
     T = T or config.KD_TEMPERATURE
@@ -34,9 +18,7 @@ def kd_logit_loss(student_logits, teacher_logits, T=None):
     return F.kl_div(logp_student, p_teacher, reduction="batchmean") * (T * T)
 
 
-# --------------------------------------------------------------------------- #
 #  DISTILLATION TRAINING
-# --------------------------------------------------------------------------- #
 def distill(teacher, student, task_A_data, epochs=None, lr=None,
             T=None, alpha=None, verbose=True):
     """Distill the teacher into the student's Task-A head (+ shared backbone)."""

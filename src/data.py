@@ -1,19 +1,3 @@
-"""
-src/data.py
-===========
-Everything about data:
-  - download both Kaggle datasets (via kagglehub)
-  - collect image paths + labels (skipping macOS junk files)
-  - stratified train / val / test split
-  - PyTorch Dataset + DataLoader factory
-  - class weights for imbalance
-
-Public API (used from the notebook):
-    download_datasets()           -> (path_A, path_B)
-    build_task(task="A")          -> dict of loaders + metadata
-    show_samples(task_data)       -> quick visual sanity check 
-"""
-
 import os
 import numpy as np
 from PIL import Image, ImageFile
@@ -28,9 +12,7 @@ import config
 ImageFile.LOAD_TRUNCATED_IMAGES = True   # tolerate slightly corrupt files
 
 
-# --------------------------------------------------------------------------- #
 #  1. DOWNLOAD
-# --------------------------------------------------------------------------- #
 def download_datasets():
     """Download both datasets with kagglehub. Returns their local folders."""
     import kagglehub
@@ -41,9 +23,7 @@ def download_datasets():
     return path_a, path_b
 
 
-# --------------------------------------------------------------------------- #
 #  2. COLLECT IMAGE PATHS + LABELS
-# --------------------------------------------------------------------------- #
 def collect_images(root, class_names):
     """Walk `root`, map subfolders named like class_names to integer labels.
 
@@ -68,9 +48,7 @@ def collect_images(root, class_names):
     return np.array(paths), np.array(labels)
 
 
-# --------------------------------------------------------------------------- #
 #  3. SPLIT
-# --------------------------------------------------------------------------- #
 def stratified_split(paths, labels):
     """Split into train / val / test keeping class proportions."""
     test_size = config.VAL_RATIO + config.TEST_RATIO
@@ -93,9 +71,7 @@ def _cap_train(x, y, n):
     return x[idx], y[idx]
 
 
-# --------------------------------------------------------------------------- #
 #  4. TRANSFORMS
-# --------------------------------------------------------------------------- #
 def get_transforms(train: bool):
     base = [transforms.Resize((config.IMAGE_SIZE, config.IMAGE_SIZE))]
     if train:
@@ -106,9 +82,7 @@ def get_transforms(train: bool):
     return transforms.Compose(base)
 
 
-# --------------------------------------------------------------------------- #
 #  5. DATASET
-# --------------------------------------------------------------------------- #
 class ImageDataset(Dataset):
     def __init__(self, paths, labels, tf):
         self.paths, self.labels, self.tf = paths, labels, tf
@@ -134,9 +108,7 @@ def class_weights(labels, n_classes, device):
     return torch.tensor(w, dtype=torch.float, device=device)
 
 
-# --------------------------------------------------------------------------- #
 #  6. PUBLIC: build everything for one task
-# --------------------------------------------------------------------------- #
 def build_task(task, dataset_path):
     """Build all loaders + metadata for Task 'A' or 'B'.
 
@@ -178,9 +150,7 @@ def build_task(task, dataset_path):
     return data
 
 
-# --------------------------------------------------------------------------- #
 #  7. PUBLIC: quick visual check
-# --------------------------------------------------------------------------- #
 def show_samples(task_data, n=5):
     import matplotlib.pyplot as plt
     inv = transforms.Normalize(

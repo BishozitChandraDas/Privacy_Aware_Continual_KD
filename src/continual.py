@@ -1,29 +1,3 @@
-"""
-src/continual.py
-================
-Stage 3 — Continual Learning. Adapt the distilled student to Task B (brain MRI)
-WITHOUT access to Task A data, using four strategies, then measure how much of
-Task A is forgotten.
-
-Strategies
-----------
-  naive      : just fine-tune on Task B            (baseline / lower bound)
-  ewc        : Elastic Weight Consolidation        (Fisher-weighted penalty)
-  lwf        : Learning without Forgetting          (distill old Task-A outputs)
-  bn_freeze  : freeze the ENTIRE backbone (incl. BN running stats + affine
-               params) and only train the Task-B head (architectural
-               stabilization / upper bound on retention)
-
-Each method starts from the SAME distilled student (a fresh copy), so the
-comparison is fair.
-
-Public API:
-    continual_train(student_state, method, task_A_data, task_B_data, student_name)
-        -> trained model
-    run_all_methods(student_state, task_A_data, task_B_data, ref_acc, student_name)
-        -> pandas.DataFrame of results
-"""
-
 import copy
 import numpy as np
 import pandas as pd
@@ -36,9 +10,7 @@ from src import models, engine
 from src.distillation import kd_logit_loss
 
 
-# --------------------------------------------------------------------------- #
 #  BN FREEZE
-# --------------------------------------------------------------------------- #
 def _freeze_bn(model):
     """Put all BatchNorm layers in eval mode (stops running-stat updates) and
     stop their affine gradients — locks Task-A feature statistics."""
@@ -52,31 +24,12 @@ def _freeze_bn(model):
 
 
 def _freeze_backbone(model):
-    """FULL backbone freeze (architectural stabilization).
-
-    This is stronger than _freeze_bn alone: it also stops gradient updates
-    on every conv/linear weight in the shared backbone, not just the BN
-    affine params. Without this, the backbone's conv weights keep shifting
-    during Task B training while BN's running statistics stay locked to
-    Task A's distribution — that mismatch is what was causing bn_freeze to
-    score WORSE than naive fine-tuning (BN stats frozen but the features
-    feeding into them no longer match those stats).
-
-    Freezing the whole backbone removes that mismatch entirely: nothing in
-    the shared trunk changes after Task A, so Task A retention should be
-    near the teacher/distillation reference accuracy. Only the Task-B head
-    is trained, so Task B accuracy may be a bit lower than the other
-    methods — this trade-off is exactly what the stability-vs-plasticity
-    plot is meant to show.
-    """
     _freeze_bn(model)  # eval-mode BN + stop BN affine grads (belt-and-braces)
     for p in model.backbone.parameters():
         p.requires_grad_(False)
 
 
-# --------------------------------------------------------------------------- #
 #  EWC: Fisher information + penalty
-# --------------------------------------------------------------------------- #
 def _compute_fisher(model, loader, n_batches=None):
     """Estimate the diagonal Fisher information on Task A (importance of each
     parameter for the old task)."""
@@ -110,13 +63,11 @@ def _ewc_penalty(model, fisher, theta_star):
     return loss
 
 
-# --------------------------------------------------------------------------- #
 #  MAIN: train one continual method
-# --------------------------------------------------------------------------- #
 def continual_train(student_state, method, task_A_data, task_B_data,
                     student_name=None, epochs=None, lr=None,
                     ewc_lambda=None, lwf_alpha=None, verbose=True):
-    """Adapt a fresh copy of the distilled student to Task B with `method`."""
+    
     device = config.get_device()
     epochs = epochs or config.CONTINUAL_EPOCHS
     ewc_lambda = config.EWC_LAMBDA if ewc_lambda is None else ewc_lambda
@@ -127,13 +78,7 @@ def continual_train(student_state, method, task_A_data, task_B_data,
     model = models.build_student(student_name).to(device)
     model.load_state_dict(student_state)
 
-    # ----------------------------------------------------------------- #
-    # Build the optimizer's parameter list.
-    #
-    # For bn_freeze we freeze the WHOLE backbone (see _freeze_backbone
-    # docstring above) and only optimize the Task-B head. For every other
-    # method, the backbone + Task-B head are both trainable, as before.
-    # ----------------------------------------------------------------- #
+   
     if method == "bn_freeze":
         _freeze_backbone(model)
         opt = engine.make_optimizer(list(model.head_b.parameters()), lr)
@@ -186,9 +131,7 @@ def continual_train(student_state, method, task_A_data, task_B_data,
     return model
 
 
-# --------------------------------------------------------------------------- #
 #  RUN ALL FOUR METHODS + COMPARE
-# --------------------------------------------------------------------------- #
 def run_all_methods(student_state, task_A_data, task_B_data, ref_acc,
                     student_name=None, save=True):
     """Train every CL method, measure Task-A retention vs Task-B accuracy."""

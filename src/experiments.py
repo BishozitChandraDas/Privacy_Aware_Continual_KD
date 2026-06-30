@@ -1,31 +1,10 @@
-"""
-src/experiments.py
-==================
-Option 3 — the "big" study that matches the proposal:
-  - 2 teachers  (ResNet-50, ViT-B/16)
-  - 2 students  (MobileNetV3, EfficientNet-B0)
-  - 4 continual methods (naive, EWC, LwF, BN-freeze)
-  - EWC lambda sweep (ablation)
-
-Everything is checkpoint-based, so you can run ONE (teacher, student) pair at a
-time and resume later — important for Colab timeouts. Heavy pairs (e.g. ViT)
-can be run on a stronger machine and the checkpoints copied back.
-
-Public API:
-    run_pair(teacher_name, student_name, task_A, task_B)      -> DataFrame
-    run_all_pairs(task_A, task_B, pairs=None)                 -> DataFrame
-    run_lambda_sweep(student_state, task_A, task_B, ref_acc)  -> DataFrame
-"""
-
 import pandas as pd
 
 import config
 from src import models, engine, distillation, continual
 
 
-# --------------------------------------------------------------------------- #
 #  ONE (teacher, student) PAIR  ->  full pipeline
-# --------------------------------------------------------------------------- #
 def run_pair(teacher_name, student_name, task_A, task_B,
              force_retrain=False, save=True):
     """Teacher -> distill -> 4 continual methods, for one (teacher, student)."""
@@ -93,9 +72,7 @@ def run_pair(teacher_name, student_name, task_A, task_B,
     return df
 
 
-# --------------------------------------------------------------------------- #
 #  ALL PAIRS  (2 x 2 = 4 combinations)
-# --------------------------------------------------------------------------- #
 def run_all_pairs(task_A, task_B, pairs=None, force_retrain=False):
     """Run every (teacher, student) combination and concatenate the results.
 
@@ -118,9 +95,7 @@ def run_all_pairs(task_A, task_B, pairs=None, force_retrain=False):
     return full
 
 
-# --------------------------------------------------------------------------- #
 #  EWC LAMBDA SWEEP  (ablation)
-# --------------------------------------------------------------------------- #
 def run_lambda_sweep(student_state, task_A, task_B, ref_acc,
                      student_name=None, lambdas=None):
     """Ablation: vary EWC lambda and watch retention vs Task-B accuracy."""

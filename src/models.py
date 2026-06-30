@@ -1,25 +1,3 @@
-"""
-src/models.py
-=============
-Model definitions for the study.
-
-Teachers (single-head, trained on Task A):
-    - resnet50      (CNN)
-    - vit_b_16      (Transformer)
-
-Students (multi-head: shared backbone + one head per task):
-    - mobilenetv3   (MobileNetV3-Large)
-    - efficientnet_b0
-
-A multi-head student is what makes continual learning possible: the backbone
-is shared across tasks (so it can forget), while each task keeps its own head.
-
-Public API:
-    build_teacher(name, num_classes)         -> nn.Module
-    build_student(name, n_a, n_b)            -> MultiHeadStudent
-    count_params(model)                      -> float (millions)
-"""
-
 import torch
 import torch.nn as nn
 from torchvision import models
@@ -27,9 +5,7 @@ from torchvision import models
 import config
 
 
-# --------------------------------------------------------------------------- #
 #  TEACHERS  (single head, for Task A)
-# --------------------------------------------------------------------------- #
 def build_teacher(name=None, num_classes=None):
     name = (name or config.MAIN_TEACHER).lower()
     num_classes = num_classes or config.NUM_CLASSES_A
@@ -49,9 +25,7 @@ def build_teacher(name=None, num_classes=None):
     return m
 
 
-# --------------------------------------------------------------------------- #
 #  STUDENT  (multi-head: shared backbone + head_a + head_b)
-# --------------------------------------------------------------------------- #
 class MultiHeadStudent(nn.Module):
     """Shared backbone + a separate classification head per task.
 
@@ -105,9 +79,7 @@ def build_student(name=None, n_a=None, n_b=None):
     return MultiHeadStudent(backbone_name=name, n_a=n_a, n_b=n_b)
 
 
-# --------------------------------------------------------------------------- #
 #  UTIL
-# --------------------------------------------------------------------------- #
 def count_params(model):
     """Number of parameters in millions."""
     return sum(p.numel() for p in model.parameters()) / 1e6

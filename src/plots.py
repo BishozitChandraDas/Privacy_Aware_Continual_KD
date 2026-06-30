@@ -1,20 +1,3 @@
-"""
-src/plots.py
-============
-All figures for the paper. Each function saves a PNG into results/figures/
-and also shows it inline.
-
-Public API:
-    plot_confusion(y_true, y_pred, class_names, title, fname)
-    plot_roc(y_true, y_prob, title, fname)                    # binary (Task A)
-    plot_loss_curve(history, title, fname)
-    plot_retention_bar(cl_df, fname)
-    plot_stability_plasticity(cl_df, fname)
-    plot_privacy_tradeoff(priv_df, fname)
-    plot_lambda_sweep(sweep_df, fname)
-    plot_pairs_grouped(all_pairs_df, fname)
-"""
-
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,10 +12,7 @@ def _save(fig, fname):
     fig.savefig(path, dpi=150, bbox_inches="tight")
     print("saved:", path)
 
-
-# --------------------------------------------------------------------------- #
 #  CONFUSION MATRIX
-# --------------------------------------------------------------------------- #
 def plot_confusion(y_true, y_pred, class_names, title="Confusion", fname="confusion.png"):
     cm = confusion_matrix(y_true, y_pred)
     fig, ax = plt.subplots(figsize=(5, 4))
@@ -42,9 +22,7 @@ def plot_confusion(y_true, y_pred, class_names, title="Confusion", fname="confus
     plt.tight_layout(); _save(fig, fname); plt.show()
 
 
-# --------------------------------------------------------------------------- #
 #  ROC  (binary — Task A)
-# --------------------------------------------------------------------------- #
 def plot_roc(y_true, y_prob, title="ROC", fname="roc.png"):
     # y_prob: probability of the positive class (column 1)
     p1 = y_prob[:, 1] if y_prob.ndim == 2 else y_prob
@@ -57,9 +35,7 @@ def plot_roc(y_true, y_prob, title="ROC", fname="roc.png"):
     plt.tight_layout(); _save(fig, fname); plt.show()
 
 
-# --------------------------------------------------------------------------- #
 #  LOSS / ACC CURVE
-# --------------------------------------------------------------------------- #
 def plot_loss_curve(history, title="Training curve", fname="loss_curve.png"):
     ep = range(1, len(history["train_loss"]) + 1)
     fig, ax1 = plt.subplots(figsize=(6, 4))
@@ -75,9 +51,7 @@ def plot_loss_curve(history, title="Training curve", fname="loss_curve.png"):
     plt.tight_layout(); _save(fig, fname); plt.show()
 
 
-# --------------------------------------------------------------------------- #
 #  RETENTION BAR  (continual comparison)
-# --------------------------------------------------------------------------- #
 def plot_retention_bar(cl_df, fname="retention_bar.png"):
     d = cl_df.sort_values("TaskA_retention_%", ascending=False)
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -89,9 +63,7 @@ def plot_retention_bar(cl_df, fname="retention_bar.png"):
     plt.tight_layout(); _save(fig, fname); plt.show()
 
 
-# --------------------------------------------------------------------------- #
 #  STABILITY vs PLASTICITY
-# --------------------------------------------------------------------------- #
 def plot_stability_plasticity(cl_df, fname="stability_plasticity.png"):
     d = cl_df.sort_values("TaskA_retention_%", ascending=False)
     x = d["method"].tolist()
@@ -106,9 +78,7 @@ def plot_stability_plasticity(cl_df, fname="stability_plasticity.png"):
     plt.tight_layout(); _save(fig, fname); plt.show()
 
 
-# --------------------------------------------------------------------------- #
 #  PRIVACY-UTILITY TRADE-OFF
-# --------------------------------------------------------------------------- #
 def plot_privacy_tradeoff(priv_df, fname="privacy_tradeoff.png"):
     x = [str(e) for e in priv_df["epsilon"]]
     fig, ax1 = plt.subplots(figsize=(7, 5))
@@ -122,9 +92,7 @@ def plot_privacy_tradeoff(priv_df, fname="privacy_tradeoff.png"):
     plt.tight_layout(); _save(fig, fname); plt.show()
 
 
-# --------------------------------------------------------------------------- #
 #  LAMBDA SWEEP  (ablation)
-# --------------------------------------------------------------------------- #
 def plot_lambda_sweep(sweep_df, fname="lambda_sweep.png"):
     x = sweep_df["lambda"].astype(str)
     fig, ax1 = plt.subplots(figsize=(7, 4.5))
@@ -137,9 +105,7 @@ def plot_lambda_sweep(sweep_df, fname="lambda_sweep.png"):
     plt.tight_layout(); _save(fig, fname); plt.show()
 
 
-# --------------------------------------------------------------------------- #
 #  GROUPED BAR  (all teacher x student pairs)
-# --------------------------------------------------------------------------- #
 def plot_pairs_grouped(all_pairs_df, fname="all_pairs_retention.png"):
     """Grouped bar: retention per method, grouped by (teacher,student) pair."""
     df = all_pairs_df.copy()

@@ -1,25 +1,11 @@
-"""
-config.py
-=========
-Central configuration for the whole project. NOTHING is hard-coded elsewhere —
-every path, hyper-parameter, model name and privacy budget lives here.
-
-Works on BOTH Google Colab and a local machine without any code change:
-the PROJECT path is auto-detected.
-"""
-
 import os
 
-
-# --------------------------------------------------------------------------- #
-#  PATHS  (auto-detect Colab vs local)
-# --------------------------------------------------------------------------- #
 def _detect_project_root() -> str:
     """Return the project root folder on Colab or local automatically."""
     colab_path = "/content/drive/MyDrive/APAI_Project"
     if os.path.isdir(colab_path): 
         return colab_path
-    # local: the folder that contains this config.py
+  
     return os.path.dirname(os.path.abspath(__file__))
 
 
@@ -28,20 +14,14 @@ CHECKPOINT_DIR = os.path.join(PROJECT_ROOT, "checkpoints")
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
 FIGURE_DIR = os.path.join(RESULTS_DIR, "figures")
 
-# create output folders if they do not exist yet
+
 for _d in (CHECKPOINT_DIR, RESULTS_DIR, FIGURE_DIR):
     os.makedirs(_d, exist_ok=True)
 
 
-# --------------------------------------------------------------------------- #
-#  REPRODUCIBILITY
-# --------------------------------------------------------------------------- #
 SEED = 42
 
 
-# --------------------------------------------------------------------------- #
-#  DATA
-# --------------------------------------------------------------------------- #
 # Kaggle dataset slugs (downloaded via kagglehub)
 DATASET_A_SLUG = "paultimothymooney/chest-xray-pneumonia"   # Task A
 DATASET_B_SLUG = "masoudnickparvar/brain-tumor-mri-dataset"  # Task B
@@ -70,9 +50,7 @@ BATCH_SIZE = 32
 NUM_WORKERS = 0
 
 
-# --------------------------------------------------------------------------- #
 #  MODELS  (this is what makes the study "big": 2 teachers x 2 students)
-# --------------------------------------------------------------------------- #
 TEACHERS = ["resnet50", "vit_b_16"]            # CNN vs Transformer teacher
 STUDENTS = ["mobilenetv3", "efficientnet_b0"]  # two lightweight students
 
@@ -81,9 +59,7 @@ MAIN_TEACHER = "resnet50"
 MAIN_STUDENT = "mobilenetv3"
 
 
-# --------------------------------------------------------------------------- #
 #  TRAINING
-# --------------------------------------------------------------------------- #
 LR = 1e-3
 MOMENTUM = 0.9            # used if an SGD optimizer is selected
 OPTIMIZER = "adam"       # "adam" or "sgd"
@@ -93,16 +69,12 @@ DISTILL_EPOCHS = 5
 CONTINUAL_EPOCHS = 8
 
 
-# --------------------------------------------------------------------------- #
 #  KNOWLEDGE DISTILLATION
-# --------------------------------------------------------------------------- #
 KD_TEMPERATURE = 3.0     # softmax temperature T
 KD_ALPHA = 0.5           # weight: alpha*CE + (1-alpha)*KD
 
 
-# --------------------------------------------------------------------------- #
 #  CONTINUAL LEARNING
-# --------------------------------------------------------------------------- #
 CL_METHODS = ["naive", "ewc", "lwf", "bn_freeze"]
 
 EWC_LAMBDA = 50000.0     # EWC regularization strength
@@ -114,31 +86,17 @@ LWF_TEMPERATURE = 3.0
 EWC_LAMBDA_SWEEP = [0, 500, 2000, 8000]
 
 
-# --------------------------------------------------------------------------- #
 #  PRIVACY
-# --------------------------------------------------------------------------- #
 DP_EPSILONS = [8.0, 3.0, 1.0]   # privacy budgets to test (smaller = stronger)
 DP_DELTA = 1e-5
 DP_MAX_GRAD_NORM = 1.0
 DP_EPOCHS = 15
 DP_MAX_PHYSICAL_BATCH = 8        # kept for backward-compat (unused by the
                                   # manual/no-Opacus DP-SGD implementation)
-
-# Learning rate specifically for DP-SGD training (src/privacy.py).
-# DP-SGD's gradient clipping + noise make a "normal" SGD lr (e.g. 0.05) far
-# too large for this small CNN -- empirically, loss simply doesn't decrease
-# at lr=0.05 or lr=0.005 (the model collapses to predicting the majority
-# class). A small-lr sweep (0.001 / 0.01 / 0.02) found 0.02 gives the best
-# accuracy on the non-DP sanity check, so that's used as the DP learning
-# rate too. Kept separate from LR (used for the main teacher/student/
-# continual-learning pipeline) since that pipeline is unaffected and uses
-# Adam at LR=1e-3, a very different optimizer/scale.
 LR_DP = 0.02
 
 
-# --------------------------------------------------------------------------- #
 #  DEVICE
-# --------------------------------------------------------------------------- #
 def get_device():
     import torch
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
